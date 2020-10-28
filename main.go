@@ -248,7 +248,7 @@ func processBlocks(fromBlock uint64, toBlock uint64) {
 
 func scaleDown(n *big.Int, token common.Address) uint64 {
 	decimals := getDecimals(token)
-	scale := big.NewInt(int64(6 - decimals))
+	scale := big.NewInt(int64(decimals - 6))
 	var i big.Int
 	var amount big.Int
 	i.Exp(big.NewInt(10), scale, nil)
@@ -260,7 +260,7 @@ func scaleDown(n *big.Int, token common.Address) uint64 {
 
 func scaleUp(n int64, token common.Address) big.Int {
 	decimals := getDecimals(token)
-	scale := 6 - decimals
+	scale := decimals - 6
 	var i big.Int
 	var amount big.Int
 	i.Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
