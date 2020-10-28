@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+var decimals map[common.Address]uint
 var lastBlockNumber uint64
 var infuraNetwork string
 var privateKey ed25519.PrivateKey
@@ -54,15 +55,27 @@ func check(e error) {
 	}
 }
 
+func getDecimals(token common.Address) uint {
+	if decimals[token] == 0 {
+		return 18
+	} else {
+		return decimals[token]
+	}
+}
+
 func init() {
-    var err error
+	var err error
 	mintTopic = common.HexToHash("0x103a2d32aec953695f3b9ec5ed6c1c6cb822debe92cf1fcf0832cb2c262c7eec")
+	renBTCAddress := common.HexToAddress("0xeb4c2781e4eba804ce9a9803c67d0893436bb27d")
+
+	decimals = make(map[common.Address]uint)
+	decimals[renBTCAddress] = 8
 
 	godotenv.Load()
 	infuraProjectId = os.Getenv("INFURA_PROJECT_ID")
 	infuraNetwork = os.Getenv("INFURA_NETWORK")
 	wethAddress = common.HexToAddress(os.Getenv("WETH_ADDRESS"))
-    ethPrivateKey, err = crypto.HexToECDSA(os.Getenv("ETH_PRIVATE_KEY"))
+	ethPrivateKey, err = crypto.HexToECDSA(os.Getenv("ETH_PRIVATE_KEY"))
 	ethBridgeAddress = common.HexToAddress(os.Getenv("ETH_BRIDGE_ADDRESS"))
 	ethPublicKey := ethPrivateKey.Public()
 	publicKeyECDSA, ok := ethPublicKey.(*ecdsa.PublicKey)
@@ -75,7 +88,7 @@ func init() {
 	ec = ecclient.NewClient(privateKey)
 	client, err = ethclient.Dial(fmt.Sprintf("wss://%s.infura.io/ws/v3/%s", infuraNetwork, infuraProjectId))
 	bridgeJSON, err := ioutil.ReadFile("./artifacts/contracts/Bridge.sol/Bridge.json")
-    check(err)
+	check(err)
 	var contract Contract
 	json.Unmarshal(bridgeJSON, &contract)
 
@@ -155,10 +168,12 @@ func BridgeServer(w http.ResponseWriter, r *http.Request) {
 	err = cbor.Unmarshal(argumentsBytes, &arguments)
 	check(err)
 
-	amount := scaleUp(int64(arguments[2].(uint64)), 12)
+	token := common.BytesToAddress(arguments[0].([]byte))
+	recipient := common.BytesToAddress(arguments[1].([]byte))
+	amount := scaleUp(int64(arguments[2].(uint64)), token)
 	signature := signRelease(
-		common.BytesToAddress(arguments[0].([]byte)),
-		common.BytesToAddress(arguments[1].([]byte)),
+		token,
+		recipient,
 		&amount,
 		uint32(transactionId),
 		ethBridgeAddress,
@@ -208,18 +223,19 @@ func processBlocks(fromBlock uint64, toBlock uint64) {
 	}{}
 	for _, ethLog := range ethLogs {
 		err := bridge2.UnpackIntoInterface(&mint, "Mint", ethLog.Data)
+		token := common.BytesToAddress(ethLog.Topics[1+mint.Token].Bytes()[12:])
 		check(err)
-		amount := scaleDown(mint.Amount, big.NewInt(12))
-        var sender [32]uint
-        for i := range privateKey.Public().(ed25519.PublicKey) {
-            sender[i] = uint(privateKey.Public().(ed25519.PublicKey)[i])
-        }
+		amount := scaleDown(mint.Amount, token)
+		var sender [32]uint
+		for i := range privateKey.Public().(ed25519.PublicKey) {
+			sender[i] = uint(privateKey.Public().(ed25519.PublicKey)[i])
+		}
 		transaction := ecclient.TransactionRequest{
 			Contract: "Bridge",
-            Sender: sender,
+			Sender:   sender,
 			Function: "mint",
 			Arguments: []interface{}{
-				ethLog.Topics[1+mint.Token].Bytes()[12:],
+				token.Bytes(),
 				mint.EllipticoinAddress[:],
 				amount,
 			},
@@ -230,7 +246,9 @@ func processBlocks(fromBlock uint64, toBlock uint64) {
 	}
 }
 
-func scaleDown(n *big.Int, scale *big.Int) uint64 {
+func scaleDown(n *big.Int, token common.Address) uint64 {
+	decimals := getDecimals(token)
+	scale := big.NewInt(int64(6 - decimals))
 	var i big.Int
 	var amount big.Int
 	i.Exp(big.NewInt(10), scale, nil)
@@ -240,10 +258,12 @@ func scaleDown(n *big.Int, scale *big.Int) uint64 {
 
 }
 
-func scaleUp(n int64, scale int64) big.Int {
+func scaleUp(n int64, token common.Address) big.Int {
+	decimals := getDecimals(token)
+	scale := 6 - decimals
 	var i big.Int
 	var amount big.Int
-	i.Exp(big.NewInt(10), big.NewInt(scale), nil)
+	i.Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
 	amount.Mul(big.NewInt(n), &i)
 
 	return amount
