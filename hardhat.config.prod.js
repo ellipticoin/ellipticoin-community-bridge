@@ -21,7 +21,5 @@ module.exports = {
       accounts: [`0x${ETH_PRIVATE_KEY}`],
     },
   },
-  solc: {
-    version: "0.6.12",
-  },
+  solidity: "0.6.12",
 };
