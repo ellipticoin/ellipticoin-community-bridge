@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"io/ioutil"
 	"log"
+	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -162,12 +163,17 @@ func BridgeServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	transaction := ec.GetTransaction(uint32(transactionId))
+	okValueBytes, err := cbor.Marshal(map[string]interface{}{"Ok": nil})
+	check(err)
+	if base64.StdEncoding.EncodeToString(okValueBytes) != string(transaction.ReturnValue) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	argumentsBytes, err := base64.StdEncoding.DecodeString(string(transaction.Arguments))
 	check(err)
 	var arguments []interface{}
 	err = cbor.Unmarshal(argumentsBytes, &arguments)
 	check(err)
-
 	token := common.BytesToAddress(arguments[0].([]byte))
 	recipient := common.BytesToAddress(arguments[1].([]byte))
 	amount := scaleUp(int64(arguments[2].(uint64)), token)
@@ -182,6 +188,7 @@ func BridgeServer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/cbor")
 	w.WriteHeader(http.StatusOK)
 	w.Write(signature)
+	log.Printf("Released %f 0x%s to %s\n", float64(amount.Int64())/math.Pow10(int(getDecimals(token))), hex.EncodeToString(token.Bytes()), base64.StdEncoding.EncodeToString(recipient.Bytes()))
 }
 func enableCors(w *http.ResponseWriter) {
 	(*w).Header().Set("Access-Control-Allow-Origin", "*")
