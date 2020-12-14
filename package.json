@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "./node_modules/hardhat/internal/cli/cli.js test",
+    "format": "./node_modules/prettier/bin-prettier.js --write test/*.js"
   },
   "keywords": [],
   "author": "",
