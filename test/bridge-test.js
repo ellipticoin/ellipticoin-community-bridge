@@ -7,13 +7,15 @@ const ELC_ADDRESS = "0x0000000000000000000000000000000000000001";
 describe("Bridge", function () {
   let mockERC20;
   let bridge;
+  let signers;
   let alice;
   let bob;
   let carol;
   let WELC;
 
   beforeEach(async () => {
-    [alice, bob, carol] = await ethers.getSigners();
+    signers = await ethers.getSigners();
+    [alice, bob, carol] = signers;
     const MockERC20Factory = await ethers.getContractFactory("MockERC20");
     const MockWETHFactory = await ethers.getContractFactory("MockWETH");
     const BridgeFactory = await ethers.getContractFactory("Bridge");
@@ -60,7 +62,7 @@ describe("Bridge", function () {
   });
 
   describe("#redeem", function () {
-    it("emits an event and calls transfer on the token", async function () {
+    it.only("emits an event and calls transfer on the token", async function () {
       const amount = 50;
       const foreignTransactionId = 0;
       let alicesSignature = await signRelease(
@@ -71,9 +73,13 @@ describe("Bridge", function () {
         bridge.address,
         alice
       );
-      await bridge.redeem(mockERC20.address, amount, foreignTransactionId, [
+      await bridge.redeem(
+        mockERC20.address,
+        amount,
+        foreignTransactionId,
         alicesSignature,
-      ], 0);
+        signers.indexOf(alice)
+      );
       const lastTransfer = await mockERC20.getLastTransfer();
       expect(lastTransfer[0]).to.eq(await alice.getAddress());
       expect(lastTransfer[1]).to.eq(50);
@@ -90,8 +96,13 @@ describe("Bridge", function () {
         bridge.address,
         alice
       );
-      await bridge.redeem(ELC_ADDRESS, amount, foreignTransactionId, 
-        alicesSignature, 0);
+      await bridge.redeem(
+        ELC_ADDRESS,
+        amount,
+        foreignTransactionId,
+        alicesSignature,
+        signers.indexOf(alice)
+      );
 
       expect(await WELC.balanceOf(await alice.getAddress())).to.eq(amount);
     });
@@ -107,13 +118,21 @@ describe("Bridge", function () {
         bridge.address,
         alice
       );
-      await bridge.redeem(mockERC20.address, amount, foreignTransactionId, 
+      await bridge.redeem(
+        mockERC20.address,
+        amount,
+        foreignTransactionId,
         alicesSignature,
-      , 0);
+        signers.indexOf(alice)
+      );
       await expect(
-        bridge.redeem(mockERC20.address, amount, foreignTransactionId, 
+        bridge.redeem(
+          mockERC20.address,
+          amount,
+          foreignTransactionId,
           alicesSignature,
-        , 0)
+          signers.indexOf(alice)
+        )
       ).to.be.revertedWith("revert invalid foreignTransactionId");
     });
 
@@ -131,9 +150,13 @@ describe("Bridge", function () {
         alice
       );
       await expect(
-        bridge.redeem(mockERC20.address, amount, foreignTransactionId, 
+        bridge.redeem(
+          mockERC20.address,
+          amount,
+          foreignTransactionId,
           alicesSignature,
-        , 0)
+          signers.indexOf(alice)
+        )
       ).to.be.revertedWith("revert invalid signature");
     });
   });
@@ -150,9 +173,13 @@ describe("Bridge", function () {
         bridge.address,
         alice
       );
-      await bridge.redeem(mockERC20.address, amount, foreignTransactionId, 
+      await bridge.redeem(
+        mockERC20.address,
+        amount,
+        foreignTransactionId,
         alicesSignature,
-      , 0);
+        signers.indexOf(alice)
+      );
       await bridge.redeemedTransactions(0);
       await bridge.undoTransactions([0]);
       expect(await bridge.redeemedTransactions(0)).to.be.false;

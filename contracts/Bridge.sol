@@ -11,14 +11,12 @@ import "./WELC.sol";
 
 contract Bridge is Ownable {
     using ECDSA for bytes32;
-    IWETH public immutable WETH;
     WELC public immutable _WELC;
     address[] public signers;
     mapping(uint256 => bool) public redeemedTransactions;
 
-    constructor(address[] memory _signers, IWETH _WETH) public {
+    constructor(address[] memory _signers) public {
         signers = _signers;
-        WETH = _WETH;
         _WELC = new WELC("Wrapped Ellipticoin", "WELC");
     }
 
