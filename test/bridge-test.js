@@ -2,7 +2,7 @@ const {expect} = require("chai");
 const {expectEvent} = require("@openzeppelin/test-helpers");
 const {getBalance, signRelease} = require("./helpers");
 const {solidityKeccak256, hexlify, arrayify} = ethers.utils;
-const ELC_ADDRESS = "0x0000000000000000000000000000000000000001"
+const ELC_ADDRESS = "0x0000000000000000000000000000000000000001";
 
 describe("Bridge", function () {
   let mockERC20;
@@ -20,7 +20,10 @@ describe("Bridge", function () {
     WELCFactory = await ethers.getContractFactory("WELC");
     mockERC20 = await MockERC20Factory.deploy();
     mockWETH = await MockWETHFactory.deploy();
-    bridge = await BridgeFactory.deploy([await alice.getAddress(), await bob.getAddress()], mockWETH.address);
+    bridge = await BridgeFactory.deploy(
+      [await alice.getAddress(), await bob.getAddress()],
+      mockWETH.address
+    );
     WELC = WELCFactory.attach(await bridge._WELC());
     await mockERC20.deployed();
     await mockWETH.deployed();
@@ -33,7 +36,7 @@ describe("Bridge", function () {
         await alice.getAddress(),
         await bob.getAddress(),
       ]);
-      expect(await bridge.getSigners()).to.deep.eq([
+      expect([await bridge.signers(0), await bridge.signers(1)]).to.deep.eq([
         await alice.getAddress(),
         await bob.getAddress(),
       ]);
@@ -49,10 +52,10 @@ describe("Bridge", function () {
           await carol.getAddress(),
         ])
       ).to.be.revertedWith("Ownable: caller is not the owner");
-      expect(await bridgeFromBob.getSigners()).to.deep.eq([
-        await alice.getAddress(),
-        await bob.getAddress(),
-      ]);
+      expect([
+        await bridgeFromBob.signers(0),
+        await bridgeFromBob.signers(1),
+      ]).to.deep.eq([await alice.getAddress(), await bob.getAddress()]);
     });
   });
 
@@ -76,13 +79,10 @@ describe("Bridge", function () {
         bridge.address,
         bob
       );
-      await bridge.redeem(
-        mockERC20.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        [alicesSignature, bobsSignature]
-      );
+      await bridge.redeem(mockERC20.address, amount, foreignTransactionId, [
+        alicesSignature,
+        bobsSignature,
+      ]);
       const lastTransfer = await mockERC20.getLastTransfer();
       expect(lastTransfer[0]).to.eq(await alice.getAddress());
       expect(lastTransfer[1]).to.eq(50);
@@ -107,16 +107,12 @@ describe("Bridge", function () {
         bridge.address,
         bob
       );
-      await bridge.redeem(
-        ELC_ADDRESS,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        [alicesSignature, bobsSignature]
-      );
+      await bridge.redeem(ELC_ADDRESS, amount, foreignTransactionId, [
+        alicesSignature,
+        bobsSignature,
+      ]);
 
-
-      expect(await WELC.balanceOf(await alice.getAddress())).to.eq(amount)
+      expect(await WELC.balanceOf(await alice.getAddress())).to.eq(amount);
     });
 
     it("throws an error if you submit the same foreignTransactionId twice", async function () {
@@ -138,21 +134,15 @@ describe("Bridge", function () {
         bridge.address,
         bob
       );
-      await bridge.redeem(
-        mockERC20.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        [alicesSignature, bobsSignature]
-      );
+      await bridge.redeem(mockERC20.address, amount, foreignTransactionId, [
+        alicesSignature,
+        bobsSignature,
+      ]);
       await expect(
-        bridge.redeem(
-          mockERC20.address,
-          await alice.getAddress(),
-          amount,
-          foreignTransactionId,
-          [alicesSignature, bobsSignature]
-        )
+        bridge.redeem(mockERC20.address, amount, foreignTransactionId, [
+          alicesSignature,
+          bobsSignature,
+        ])
       ).to.be.revertedWith("revert invalid foreignTransactionId");
     });
 
@@ -170,13 +160,10 @@ describe("Bridge", function () {
         alice
       );
       await expect(
-        bridge.redeem(
-          mockERC20.address,
-          await alice.getAddress(),
-          amount,
-          foreignTransactionId,
-          [alicesSignature, bobsSignature]
-        )
+        bridge.redeem(mockERC20.address, amount, foreignTransactionId, [
+          alicesSignature,
+          bobsSignature,
+        ])
       ).to.be.revertedWith("revert invalid signature");
     });
   });
@@ -201,16 +188,13 @@ describe("Bridge", function () {
         bridge.address,
         bob
       );
-      await bridge.redeem(
-        mockERC20.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        [alicesSignature, bobsSignature]
-      );
-      await bridge.redeemedTransactions(0)
-      await bridge.undoTransactions([0])
-      expect(await bridge.redeemedTransactions(0)).to.be.false
+      await bridge.redeem(mockERC20.address, amount, foreignTransactionId, [
+        alicesSignature,
+        bobsSignature,
+      ]);
+      await bridge.redeemedTransactions(0);
+      await bridge.undoTransactions([0]);
+      expect(await bridge.redeemedTransactions(0)).to.be.false;
     });
-  })
+  });
 });

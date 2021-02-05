@@ -16,12 +16,6 @@ contract Bridge is Ownable {
     address[] public signers;
     mapping(uint256 => bool) public redeemedTransactions;
 
-    event Mint(
-        ERC20 indexed token,
-        bytes32 ellipticoinAddress,
-        uint256 amount
-    );
-
     constructor(address[] memory _signers, IWETH _WETH) public {
         signers = _signers;
         WETH = _WETH;
@@ -34,16 +28,11 @@ contract Bridge is Ownable {
         signers = _signers;
     }
 
-    function getSigners() public view returns (address[] memory) {
-        return signers;
+    receive() external payable {
     }
-
-    receive() external payable { }
-
 
     function redeem(
         ERC20 token,
-        address to,
         uint256 amount,
         uint32 foreignTransactionId,
         bytes[] memory signatures
@@ -56,12 +45,12 @@ contract Bridge is Ownable {
         requireValidSignatures(hash, signatures);
 
         if (address(token) == address(0)) {
-            (bool success, ) = to.call{value: amount}(new bytes(0));
+            (bool success, ) = msg.sender.call{value: amount}(new bytes(0));
             require(success, "Ether transfer failed");
         } else if (address(token) == address(1)) {
             _WELC.mint(msg.sender, amount);
         } else {
-            token.transfer(to, amount);
+            token.transfer(msg.sender, amount);
         }
     }
 
