@@ -38,41 +38,10 @@ contract Bridge is Ownable {
         return signers;
     }
 
-    receive() external payable {
-        assert(msg.sender == address(WETH));
-    }
+    receive() external payable { }
 
-    function mintWETH(bytes32 ellipticoinAddress) public payable {
-        WETH.deposit{value: msg.value}();
-        ERC20(address(WETH)).transfer(address(this), msg.value);
-        Mint(ERC20(address(WETH)), ellipticoinAddress, msg.value);
-    }
 
-    function mint(
-        ERC20 token,
-        bytes32 ellipticoinAddress,
-        uint256 amount
-    ) public {
-        token.transferFrom(msg.sender, address(this), amount);
-        if (token == _WELC) {
-            _WELC.burn(amount);
-        }
-        Mint(token, ellipticoinAddress, amount);
-    }
-
-    function releaseWETH(
-        address to,
-        uint256 amount,
-        uint32 foreignTransactionId,
-        bytes[] memory signatures
-    ) public {
-        release(ERC20(address(WETH)), address(this), amount, foreignTransactionId, signatures);
-        IWETH(WETH).withdraw(amount);
-        (bool success, ) = to.call{value: amount}(new bytes(0));
-        require(success, "Ether transfer failed");
-    }
-
-    function release(
+    function redeem(
         ERC20 token,
         address to,
         uint256 amount,
@@ -86,11 +55,14 @@ contract Bridge is Ownable {
         );
         requireValidSignatures(hash, signatures);
 
-        if (token == _WELC) {
-            _WELC.mint(address(this), amount);
+        if (address(token) == address(0)) {
+            (bool success, ) = to.call{value: amount}(new bytes(0));
+            require(success, "Ether transfer failed");
+        } else if (address(token) == address(1)) {
+            _WELC.mint(msg.sender, amount);
+        } else {
+            token.transfer(to, amount);
         }
-
-        token.transfer(to, amount);
     }
 
     function requireValidSignatures(bytes32 hash, bytes[] memory signatures)
@@ -102,4 +74,11 @@ contract Bridge is Ownable {
             require(hash.recover(signatures[i]) == signers[i], "invalid signature");
         }
     }
+
+    function undoTransactions(uint256[] calldata foreignTransactionIds) public onlyOwner {
+        for (uint i=0; i<foreignTransactionIds.length; i++) {
+            redeemedTransactions[foreignTransactionIds[i]] = false;
+        }
+    }
+
 }

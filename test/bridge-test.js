@@ -2,6 +2,7 @@ const {expect} = require("chai");
 const {expectEvent} = require("@openzeppelin/test-helpers");
 const {getBalance, signRelease} = require("./helpers");
 const {solidityKeccak256, hexlify, arrayify} = ethers.utils;
+const ELC_ADDRESS = "0x0000000000000000000000000000000000000001"
 
 describe("Bridge", function () {
   let mockERC20;
@@ -55,112 +56,7 @@ describe("Bridge", function () {
     });
   });
 
-  describe("#mintWETH", function () {
-    it("deposits ETH into WETH and emits an event and call transfer on the token contract", async function () {
-      let balance = await ethers.provider.getBalance(await alice.getAddress());
-      await expect(bridge.mintWETH(Buffer.alloc(32), {value: 50}))
-        .to.emit(bridge, "Mint")
-        .withArgs(mockWETH.address, ethers.utils.hexlify(Buffer.alloc(32)), 50);
-
-      const lastDeposit = await mockWETH.getLastDeposit();
-      expect(lastDeposit[0]).to.eq(await bridge.address);
-      expect(lastDeposit[1]).to.eq(50);
-    });
-  });
-
-  describe("#mint", function () {
-    it("emits an event and call transfer on the token contract", async function () {
-      await expect(bridge.mint(mockERC20.address, Buffer.alloc(32), 50))
-        .to.emit(bridge, "Mint")
-        .withArgs(
-          mockERC20.address,
-          ethers.utils.hexlify(Buffer.alloc(32)),
-          50
-        );
-
-      const lastTransferFrom = await mockERC20.getLastTransferFrom();
-      expect(lastTransferFrom[0]).to.eq(await alice.getAddress());
-      expect(lastTransferFrom[1]).to.eq(bridge.address);
-      expect(lastTransferFrom[2]).to.eq(50);
-    });
-
-    it("burns the tokens if they are wELC tokens", async function () {
-      const amount = 50;
-      const foreignTransactionId = 0;
-      let alicesSignature = await signRelease(
-        WELC.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        bridge.address,
-        alice
-      );
-      let bobsSignature = await signRelease(
-        WELC.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        bridge.address,
-        bob
-      );
-      await bridge.release(
-        WELC.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        [alicesSignature, bobsSignature]
-      );
-
-      expect(await WELC.balanceOf(await alice.getAddress())).to.eq(amount)
-      expect(await WELC.totalSupply()).to.eq(amount)
-      await WELC.approve(bridge.address, amount)
-      await expect(bridge.mint(WELC.address, Buffer.alloc(32), amount))
-        .to.emit(bridge, "Mint")
-        .withArgs(
-          WELC.address,
-          ethers.utils.hexlify(Buffer.alloc(32)),
-          amount
-        );
-      expect(await WELC.balanceOf(await alice.getAddress())).to.eq(0)
-      expect(await WELC.totalSupply()).to.eq(0)
-    });
-  });
-
-  describe("#releaseWETH", function () {
-    it("emits an event and transfers ETH", async function () {
-      const amount = 50;
-      const foreignTransactionId = 0;
-      let alicesSignature = await signRelease(
-        mockWETH.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        bridge.address,
-        alice
-      );
-      let bobsSignature = await signRelease(
-        mockWETH.address,
-        await alice.getAddress(),
-        amount,
-        foreignTransactionId,
-        bridge.address,
-        bob
-      );
-      await bridge.mintWETH(Buffer.alloc(32), {value: 50});
-      await bridge.releaseWETH(
-        await alice.getAddress(),
-        50,
-        foreignTransactionId,
-        [alicesSignature, bobsSignature]
-      );
-
-      const lastWithdrawal = await mockWETH.getLastWithdrawal();
-      expect(lastWithdrawal[0]).to.eq(bridge.address);
-      expect(lastWithdrawal[1]).to.eq(50);
-    });
-  });
-
-  describe("#release", function () {
+  describe("#redeem", function () {
     it("emits an event and calls transfer on the token", async function () {
       const amount = 50;
       const foreignTransactionId = 0;
@@ -180,7 +76,7 @@ describe("Bridge", function () {
         bridge.address,
         bob
       );
-      await bridge.release(
+      await bridge.redeem(
         mockERC20.address,
         await alice.getAddress(),
         amount,
@@ -196,7 +92,7 @@ describe("Bridge", function () {
       const amount = 50;
       const foreignTransactionId = 0;
       let alicesSignature = await signRelease(
-        WELC.address,
+        ELC_ADDRESS,
         await alice.getAddress(),
         amount,
         foreignTransactionId,
@@ -204,20 +100,21 @@ describe("Bridge", function () {
         alice
       );
       let bobsSignature = await signRelease(
-        WELC.address,
+        ELC_ADDRESS,
         await alice.getAddress(),
         amount,
         foreignTransactionId,
         bridge.address,
         bob
       );
-      await bridge.release(
-        WELC.address,
+      await bridge.redeem(
+        ELC_ADDRESS,
         await alice.getAddress(),
         amount,
         foreignTransactionId,
         [alicesSignature, bobsSignature]
       );
+
 
       expect(await WELC.balanceOf(await alice.getAddress())).to.eq(amount)
     });
@@ -241,7 +138,7 @@ describe("Bridge", function () {
         bridge.address,
         bob
       );
-      await bridge.release(
+      await bridge.redeem(
         mockERC20.address,
         await alice.getAddress(),
         amount,
@@ -249,7 +146,7 @@ describe("Bridge", function () {
         [alicesSignature, bobsSignature]
       );
       await expect(
-        bridge.release(
+        bridge.redeem(
           mockERC20.address,
           await alice.getAddress(),
           amount,
@@ -273,7 +170,7 @@ describe("Bridge", function () {
         alice
       );
       await expect(
-        bridge.release(
+        bridge.redeem(
           mockERC20.address,
           await alice.getAddress(),
           amount,
@@ -283,4 +180,37 @@ describe("Bridge", function () {
       ).to.be.revertedWith("revert invalid signature");
     });
   });
+
+  describe("#undoTransactions", function () {
+    it("emits an event and call transfer on the token contract", async function () {
+      const amount = 50;
+      const foreignTransactionId = 0;
+      let alicesSignature = await signRelease(
+        mockERC20.address,
+        await alice.getAddress(),
+        amount,
+        foreignTransactionId,
+        bridge.address,
+        alice
+      );
+      let bobsSignature = await signRelease(
+        mockERC20.address,
+        await alice.getAddress(),
+        amount,
+        foreignTransactionId,
+        bridge.address,
+        bob
+      );
+      await bridge.redeem(
+        mockERC20.address,
+        await alice.getAddress(),
+        amount,
+        foreignTransactionId,
+        [alicesSignature, bobsSignature]
+      );
+      await bridge.redeemedTransactions(0)
+      await bridge.undoTransactions([0])
+      expect(await bridge.redeemedTransactions(0)).to.be.false
+    });
+  })
 });

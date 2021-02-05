@@ -1,6 +1,7 @@
 node_modules
 
 **/target
+artifacts
 cache
 hardhat.config.js
 .env
