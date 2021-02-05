@@ -28,21 +28,21 @@ contract Bridge is Ownable {
         signers = _signers;
     }
 
-    receive() external payable {
-    }
+    receive() external payable {}
 
     function redeem(
         ERC20 token,
         uint256 amount,
         uint32 foreignTransactionId,
-        bytes[] memory signatures
+        bytes memory signature,
+        uint256 signerId
     ) public {
         require(!redeemedTransactions[foreignTransactionId], "invalid foreignTransactionId");
         redeemedTransactions[foreignTransactionId] = true;
         bytes32 hash = keccak256(
             abi.encodePacked(address(token), msg.sender, amount, foreignTransactionId, this)
         );
-        requireValidSignatures(hash, signatures);
+        requireValidSignatures(hash, signature, signerId);
 
         if (address(token) == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}(new bytes(0));
@@ -54,14 +54,11 @@ contract Bridge is Ownable {
         }
     }
 
-    function requireValidSignatures(bytes32 hash, bytes[] memory signatures)
+    function requireValidSignatures(bytes32 hash, bytes memory signature, uint256 signerId)
         internal
         view
     {
-        require(signers.length == signatures.length, "invalid number of signatures");
-        for (uint i=0; i<signers.length; i++) {
-            require(hash.recover(signatures[i]) == signers[i], "invalid signature");
-        }
+        require(hash.recover(signature) == signers[signerId], "invalid signature");
     }
 
     function undoTransactions(uint256[] calldata foreignTransactionIds) public onlyOwner {
