@@ -1,11 +1,10 @@
 const {formatUnits} = ethers.utils;
 
 async function main() {
-  console.log((await (await ethers.getSigners())[0].getGasPrice()).toNumber());
+  const owner = "0xAAa1b967F4E3D67c4946eC6816b05f0207AaD9Cd";
   const Bridge = await ethers.getContractFactory("Bridge");
-  const bridge = await Bridge.deploy(
-    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
-  );
+  const accounts = await ethers.getSigners();
+  const bridge = await Bridge.deploy(["0xAAa1b967F4E3D67c4946eC6816b05f0207AaD9Cd"], owner);
   let tx = await bridge.deployed();
 
   console.log("Bridge deployed to:", bridge.address);

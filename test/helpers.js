@@ -9,16 +9,24 @@ async function getBalance(ethers, address) {
 }
 
 async function signRelease(
-  token,
   recipient,
   amount,
+  token,
+  experationBlockNumber,
   foreignTransactionId,
   contractAddress,
   signer
 ) {
   return sign(
-    ["address", "address", "uint256", "uint32", "address"],
-    [token, recipient, amount, foreignTransactionId, contractAddress],
+    ["address", "uint64", "address", "uint64", "uint64", "address"],
+    [
+      recipient,
+      amount,
+      token,
+      experationBlockNumber,
+      foreignTransactionId,
+      contractAddress,
+    ],
     signer
   );
 }
