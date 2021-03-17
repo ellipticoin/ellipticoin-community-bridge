@@ -2,6 +2,7 @@ const {expect} = require("chai");
 const {expectEvent} = require("@openzeppelin/test-helpers");
 const {getBalance, signRelease} = require("./helpers");
 const {solidityKeccak256, hexlify, arrayify} = ethers.utils;
+const ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ELC_ADDRESS = "0x0000000000000000000000000000000000000001";
 
 describe("Bridge", function () {
@@ -11,20 +12,17 @@ describe("Bridge", function () {
   let alice;
   let bob;
   let carol;
-  let WELC;
 
   beforeEach(async () => {
     signers = await ethers.getSigners();
     [alice, bob, carol] = signers;
     const MockERC20Factory = await ethers.getContractFactory("MockERC20");
     const BridgeFactory = await ethers.getContractFactory("Bridge");
-    WELCFactory = await ethers.getContractFactory("WELC");
     mockERC20 = await MockERC20Factory.deploy();
-    bridge = await BridgeFactory.deploy([
-      await alice.getAddress(),
-      await bob.getAddress(),
-    ], await alice.getAddress());
-    WELC = WELCFactory.attach(await bridge._WELC());
+    bridge = await BridgeFactory.deploy(
+      [await alice.getAddress(), await bob.getAddress()],
+      await alice.getAddress()
+    );
     await mockERC20.deployed();
     await bridge.deployed();
   });
@@ -85,31 +83,6 @@ describe("Bridge", function () {
       expect(lastTransfer[1]).to.eq(50);
     });
 
-    it("mints wELC if the token is wELC", async function () {
-      let {number: blockNumber} = await alice.provider.getBlock();
-      const amount = 50;
-      const foreignTransactionId = 0;
-      let alicesSignature = await signRelease(
-        await alice.getAddress(),
-        amount,
-        ELC_ADDRESS,
-        blockNumber + 1,
-        foreignTransactionId,
-        bridge.address,
-        alice
-      );
-      await bridge.redeem(
-        amount,
-        ELC_ADDRESS,
-        blockNumber + 1,
-        foreignTransactionId,
-        alicesSignature,
-        signers.indexOf(alice)
-      );
-
-      expect(await WELC.balanceOf(await alice.getAddress())).to.eq(50000000000000);
-    });
-
     it("throws an error if you submit the same foreignTransactionId twice", async function () {
       let {number: blockNumber} = await alice.provider.getBlock();
       const amount = 50;
@@ -166,7 +139,7 @@ describe("Bridge", function () {
           alicesSignature,
           signers.indexOf(alice)
         )
-      ).to.be.revertedWith("signature expired");
+      ).to.be.revertedWith("expired");
     });
 
     it("throws an error if you submit an invalid signature", async function () {
@@ -188,8 +161,8 @@ describe("Bridge", function () {
     });
   });
 
-  describe("#undoTransactions", function () {
-    it("undoes transactions", async function () {
+  describe("#resetRedeems", function () {
+    it("resets redeeems", async function () {
       let {number: blockNumber} = await alice.provider.getBlock();
       const amount = 50;
       const foreignTransactionId = 0;
@@ -210,9 +183,9 @@ describe("Bridge", function () {
         alicesSignature,
         signers.indexOf(alice)
       );
-      expect(await bridge.redeemedTransactions(0)).to.be.true;
-      await bridge.undoTransactions(0);
-      expect(await bridge.redeemedTransactions(0)).to.be.false;
+      expect(await bridge.redeems(0)).to.be.true;
+      await bridge.resetRedeems(0);
+      expect(await bridge.redeems(0)).to.be.false;
     });
   });
 
@@ -226,6 +199,12 @@ describe("Bridge", function () {
       expect(lastTransfer[1]).to.eq(50);
     });
 
+    it("withdraws ETH", async function () {
+      let amount = 50;
+      await alice.sendTransaction({to: bridge.address, value: amount});
+      await bridge.withdraw(amount, ETH_ADDRESS);
+    });
+
     it("fails if not the owner", async function () {
       let amount = 50;
       let bridgeFromBob = await bridge.connect(bob);
@@ -233,23 +212,6 @@ describe("Bridge", function () {
       await expect(
         bridgeFromBob.withdraw(amount, mockERC20.address)
       ).to.be.revertedWith("Ownable: caller is not the owner");
-    });
-  });
-
-  describe("#withdrawETH", function () {
-    it("withdraws ETH", async function () {
-      let amount = 50;
-      await alice.sendTransaction({to: bridge.address, value: amount});
-      await bridge.withdrawETH(amount);
-    });
-
-    it("fails if not the owner", async function () {
-      let amount = 50;
-      let bridgeFromBob = await bridge.connect(bob);
-
-      await expect(bridgeFromBob.withdrawETH(amount)).to.be.revertedWith(
-        "Ownable: caller is not the owner"
-      );
     });
   });
 });

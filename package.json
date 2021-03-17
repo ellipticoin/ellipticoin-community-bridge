@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "./node_modules/hardhat/internal/cli/cli.js test",
-    "format": "./node_modules/prettier/bin-prettier.js --write test/*.js"
+    "format": "./node_modules/prettier/bin-prettier.js --write test/*.js scripts/*.js"
   },
   "keywords": [],
   "author": "",

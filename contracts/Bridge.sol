@@ -5,19 +5,17 @@ pragma solidity ^0.6.12;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./WELC.sol";
 
 contract Bridge is Ownable {
-    event TransferETH(address indexed from, address indexed to, uint256 value);
-    event Redeem(ERC20 indexed from, uint64 value);
+    event ReceivedETH(address indexed sender, uint256 value);
+    event SentETH(address indexed sender, uint256 value);
+    event Redeem(uint64 id);
     using ECDSA for bytes32;
-    WELC public immutable _WELC;
     address[] public signers;
-    mapping(uint64 => bool) public redeemedTransactions;
+    mapping(uint64 => bool) public redeems;
 
     constructor(address[] memory _signers, address owner) public {
         signers = _signers;
-        _WELC = new WELC("Wrapped Ellipticoin", "WELC");
         transferOwnership(owner);
     }
 
@@ -29,44 +27,36 @@ contract Bridge is Ownable {
         uint64 amount,
         ERC20 token,
         uint64 experationBlockNumber,
-        uint64 redemptionId,
+        uint64 redeemId,
         bytes memory signature,
         uint16 signerId
     ) public {
-        require(block.number <= experationBlockNumber, "signature expired");
-        require(!redeemedTransactions[redemptionId], "already redeemed");
+        require(block.number <= experationBlockNumber, "expired");
+        require(!redeems[redeemId], "already redeemed");
         require(
             validSignature(
                 msg.sender,
                 amount,
                 token,
                 experationBlockNumber,
-                redemptionId,
+                redeemId,
                 address(this),
                 signers[signerId],
                 signature
-            ),
-            "invalid signature"
-        );
-        redeemedTransactions[redemptionId] = true;
+            ), "invalid signature");
+        redeems[redeemId] = true;
         uint256 scaledAmount = scaleUp(amount, token);
 
         if (address(token) == address(0)) {
-            (bool success, ) = msg.sender.call{value: scaledAmount}(
-                new bytes(0)
-            );
-            require(success, "Ether transfer failed");
-            emit TransferETH(address(this), msg.sender, scaledAmount);
-        } else if (address(token) == address(1)) {
-            _WELC.mint(msg.sender, scaledAmount);
+            transferETH(msg.sender, scaledAmount);
         } else {
             token.transfer(msg.sender, scaledAmount);
         }
-        emit Redeem(token, amount);
+        emit Redeem(redeemId);
     }
 
     function scaleUp(uint64 amount, ERC20 token)
-        internal
+        public
         view
         returns (uint256)
     {
@@ -74,13 +64,29 @@ contract Bridge is Ownable {
     }
 
     function tokenDecimals(ERC20 token) internal view returns (uint8) {
-        if (address(token) == address(1)) {
-            return _WELC.decimals();
-        } else if (address(token) == address(1)) {
+        if (address(token) == address(0)) {
             return 18;
         } else {
             return token.decimals();
         }
+    }
+
+    function encodeRedeem(
+        address sender,
+        uint64 amount,
+        ERC20 token,
+        uint64 experationBlockNumber,
+        uint64 redeemId,
+        address contractAddress
+    ) public pure returns (bytes memory) {
+        return abi.encodePacked(
+                sender,
+                amount,
+                address(token),
+                experationBlockNumber,
+                redeemId,
+                contractAddress
+                );
     }
 
     function validSignature(
@@ -88,7 +94,7 @@ contract Bridge is Ownable {
         uint64 amount,
         ERC20 token,
         uint64 experationBlockNumber,
-        uint64 redemptionId,
+        uint64 redeemId,
         address contractAddress,
         address signer,
         bytes memory signature
@@ -99,30 +105,34 @@ contract Bridge is Ownable {
                 amount,
                 address(token),
                 experationBlockNumber,
-                redemptionId,
+                redeemId,
                 contractAddress
             )
         );
         return hash.recover(signature) == signer;
     }
 
-    function undoTransactions(uint64 lastRedemptionId) public onlyOwner {
-        for (uint64 i = 0; i <= lastRedemptionId; i++) {
-            redeemedTransactions[i] = false;
+    function resetRedeems(uint64 lastRedeemId) public onlyOwner {
+        for (uint64 i = 0; i <= lastRedeemId; i++) {
+            delete redeems[i];
         }
     }
 
     function withdraw(uint256 amount, ERC20 token) public onlyOwner {
-        token.transfer(owner(), amount);
+        if (address(token) == address(0)) {
+            transferETH(owner(), amount);
+        } else {
+            token.transfer(owner(), amount);
+        }
     }
 
-    function withdrawETH(uint256 amount) public onlyOwner {
-        (bool success, ) = owner().call{value: amount}(new bytes(0));
+    function transferETH(address to, uint256 amount) internal {
+        (bool success, ) = to.call{value: amount}(new bytes(0));
         require(success, "Ether transfer failed");
-        emit TransferETH(address(this), owner(), amount);
+        emit SentETH(to, amount);
     }
 
     receive() external payable {
-        emit TransferETH(msg.sender, address(this), msg.value);
+        emit ReceivedETH(msg.sender, msg.value);
     }
 }
